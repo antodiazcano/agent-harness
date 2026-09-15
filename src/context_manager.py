@@ -12,7 +12,7 @@ class ContextManager:
 
     def __init__(
         self,
-        tools: ToolKit,
+        tool_kit: ToolKit,
         path_rules: str = config.paths.rules,
         path_skills: str = config.paths.skills,
     ) -> None:
@@ -24,7 +24,7 @@ class ContextManager:
             tools: Tools that can be used.
         """
 
-        self.tools = tools
+        self.tool_kit = tool_kit
         self.path_rules = path_rules
         self.path_skills = path_skills
 
@@ -60,7 +60,7 @@ class ContextManager:
             content = skill_path.read_text(encoding="utf-8")
             match = re.search(
                 r"^name:\s*(.+)$[\s\S]*?^description:\s*[>|]-?\s*$\n"
-                r"((?:[ \t]+[^\n]*(?:\n|$))*)",
+                r"((?:(?:[ \t]+[^\n]*)?\n)*)",
                 content,
                 re.MULTILINE,
             )
@@ -77,7 +77,7 @@ class ContextManager:
             Summary of the skills that can be used.
         """
 
-        return f"These are the tools you can use: {self.tools.get_summary()}"
+        return f"These are the tools you can use: {self.tool_kit.get_summary()}"
 
     def get_prefix(self) -> str:
         """Obtains the prefix. for the prompt.

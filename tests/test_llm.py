@@ -10,7 +10,7 @@ def test_chat() -> None:
     llm = LLM(config.llm.groq_model)
 
     query = ""
-    history: ChatHistory = []
+    history: ChatHistory = [{"role": "system", "content": "This is a dummy prompt."}]
 
     response = llm.chat(query, history)
 
