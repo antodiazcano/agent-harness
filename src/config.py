@@ -2,33 +2,33 @@
 
 from dataclasses import dataclass
 
-# import torch
+from groq.types.chat import ChatCompletionMessageParam
+
+type ChatHistory = list[ChatCompletionMessageParam]
 
 
 @dataclass
-class ModelConfig:
+class PathsConfig:
+    """Class to define the routes to the interesting paths."""
+
+    rules: str = "data/AGENTS.md"
+    skills: str = "data/skills"
+
+
+@dataclass
+class LLMConfig:
     """Class to define the configuration of the model."""
 
-    in_dim = 3
-    out_dim = 1
-
-
-@dataclass
-class TrainingConfig:
-    """Class to define the configuration of the training."""
-
-    epochs = 10
-    batch_size = 64
-    lr = 1e-3
-    # optimizer = torch.optim.Adam
+    groq_model: str = "openai/gpt-oss-20b"
+    temperature: float = 1.0
 
 
 @dataclass
 class Config:
     """Main configuration class."""
 
-    model = ModelConfig()
-    training = TrainingConfig()
+    paths = PathsConfig()
+    llm = LLMConfig()
 
 
 config = Config()
