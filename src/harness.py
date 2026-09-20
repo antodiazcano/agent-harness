@@ -30,7 +30,7 @@ class AgentHarness:
         self.history.append(
             {"role": "user", "content": self.context_manager.get_prefix() + query}
         )
-        response = self.llm.chat(query, self.history)
+        response = self.llm.chat(self.history)
         self.history.append({"role": "assistant", "content": response})
 
     def run(self) -> None:

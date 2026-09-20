@@ -1,7 +1,7 @@
 """Script to test the context manager."""
 
 from src.context_manager import ContextManager
-from src.tools import Tool, ToolKit
+from src.tools import ReadFileTool, Tool, ToolKit
 
 TOOLS: list[Tool] = []
 TK = ToolKit(TOOLS)
@@ -38,6 +38,30 @@ def test_get_skills_summary() -> None:
     )
 
     assert skills_summary == expected, "Incorrect skills summary!"
+
+
+def test_get_tools_summary_empty_toolkit() -> None:
+    """Test `_get_tools_summary` with an empty toolkit."""
+
+    tools_summary = CM._get_tools_summary()
+    expected = "These are the tools you can use: "
+
+    assert tools_summary == expected, "Incorrect tools summary!"
+
+
+def test_get_tools_summary_non_empty_toolkit() -> None:
+    """Test `_get_tools_summary` with a non-empty toolkit."""
+
+    context_manager = ContextManager(ToolKit([ReadFileTool()]))
+    tools_summary = context_manager._get_tools_summary()
+    expected = (
+        "These are the tools you can use: "
+        "Name: read_file\n"
+        "Description: Read a UTF-8 file.\n"
+        "Args: {'path': 'File path.'}\n\n"
+    )
+
+    assert tools_summary == expected, "Incorrect tools summary!"
 
 
 def test_get_prefix() -> None:

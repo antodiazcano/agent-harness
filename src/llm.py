@@ -22,11 +22,10 @@ class LLM:
         self.model = model
         self.temperature = temperature
 
-    def chat(self, query: str, history: ChatHistory) -> str:
+    def chat(self, history: ChatHistory) -> str:
         """Uses the LLM to response the user query.
 
         Args:
-            query: Query of the user.
             history: Chat history.
 
         Returns:

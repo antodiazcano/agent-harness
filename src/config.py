@@ -1,6 +1,6 @@
 """Configuration of the project."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from groq.types.chat import ChatCompletionMessageParam
 
@@ -24,11 +24,33 @@ class LLMConfig:
 
 
 @dataclass
+class ToolsConfig:
+    """Configuration for the tools available to the agent."""
+
+    safe_shell_commands: list[str] = field(
+        default_factory=lambda: [
+            "pwd",
+            "ls",
+            "find",
+            "rg",
+            "grep",
+            "cat",
+            "head",
+            "tail",
+            "wc",
+            "git status",
+            "git diff",
+        ]
+    )
+
+
+@dataclass
 class Config:
     """Main configuration class."""
 
     paths = PathsConfig()
     llm = LLMConfig()
+    tools = ToolsConfig()
 
 
 config = Config()
