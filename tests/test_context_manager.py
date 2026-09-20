@@ -15,7 +15,18 @@ def test_get_system_prompt() -> None:
     """Test for the `_get_system_prompt` function."""
 
     prompt = CM._get_system_prompt()
-    assert isinstance(prompt, str), "Incorrect prompt!"
+    expected = (
+        "You are Tony, a small local coding agent. "
+        "To call a tool, reply only with: "
+        '{"tool": "<tool name>", '
+        '"arguments": {"<argument>": "<value>"}}. '
+        "Use a tool name and arguments listed below. "
+        "Call one tool per response, use string argument values, and do not use "
+        "Markdown. After receiving the result, either call another tool or answer "
+        "normally."
+    )
+
+    assert prompt == expected, "Incorrect prompt!"
 
 
 def test_get_rules() -> None:

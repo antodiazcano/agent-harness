@@ -36,7 +36,7 @@ class ContextManager:
             System prompt.
         """
 
-        return "You are Tony, a small local coding agent."
+        return config.prompts.agent
 
     def _get_rules(self) -> str:
         """Returns the rules (`AGENTS.md`) for the agent.

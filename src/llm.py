@@ -1,7 +1,10 @@
 """Script to define the LLM used."""
 
+from typing import cast
+
 from dotenv import load_dotenv
 from groq import Groq
+from groq.types.chat import ChatCompletionMessageParam
 
 from src.config import ChatHistory
 
@@ -18,6 +21,7 @@ class LLM:
         """
 
         load_dotenv()
+
         self.client = Groq()
         self.model = model
         self.temperature = temperature
@@ -29,14 +33,17 @@ class LLM:
             history: Chat history.
 
         Returns:
-            LLM answer.
+            Assistant's text response.
 
         Raises:
             RuntimeError: If there's an error while executing the model.
         """
 
         response = (
-            self.client.chat.completions.create(messages=history, model=self.model)
+            self.client.chat.completions.create(
+                messages=cast(list[ChatCompletionMessageParam], history),
+                model=self.model,
+            )
             .choices[0]
             .message.content
         )

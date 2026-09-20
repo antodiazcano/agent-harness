@@ -12,8 +12,9 @@ def test_chat_normal() -> None:
     """Test the LLM chat function."""
 
     with patch("src.llm.Groq") as groq:
+        message = Mock(content="Mock response")
         groq.return_value.chat.completions.create.return_value = Mock(
-            choices=[Mock(message=Mock(content="Mock response"))]
+            choices=[Mock(message=message)]
         )
         llm = LLM(config.llm.groq_model)
 
@@ -42,3 +43,17 @@ def test_chat_raises_error_when_content_is_none() -> None:
 
         with pytest.raises(RuntimeError):
             llm.chat(history)
+
+
+def test_chat_returns_tool_request_as_text() -> None:
+    """Test that tool-request JSON is passed through as ordinary text."""
+
+    with patch("src.llm.Groq") as groq:
+        response = '{"tool": "read_file", "arguments": {"path": "README.md"}}'
+        groq.return_value.chat.completions.create.return_value = Mock(
+            choices=[Mock(message=Mock(content=response))]
+        )
+        llm = LLM(config.llm.groq_model)
+        history: ChatHistory = [{"role": "user", "content": "Read a file."}]
+
+        assert llm.chat(history) == response
