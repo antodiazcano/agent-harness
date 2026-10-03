@@ -36,7 +36,7 @@ class ContextManager:
             System prompt.
         """
 
-        return config.prompts.agent
+        return f"{config.prompts.agent}\n\n{config.prompts.delegation}"
 
     def _get_rules(self) -> str:
         """Returns the rules (`AGENTS.md`) for the agent.

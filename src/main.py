@@ -16,7 +16,6 @@ def main() -> None:
     context_manager = ContextManager(
         tool_kit, path_rules=config.paths.rules, path_skills=config.paths.skills
     )
-
     agent_harness = AgentHarness(llm, context_manager)
     agent_harness.run()
 

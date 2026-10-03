@@ -43,6 +43,7 @@ class LLM:
             self.client.chat.completions.create(
                 messages=cast(list[ChatCompletionMessageParam], history),
                 model=self.model,
+                temperature=self.temperature,
             )
             .choices[0]
             .message.content

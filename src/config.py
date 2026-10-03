@@ -24,6 +24,14 @@ class PromptsConfig:
         "string argument values, and do not use Markdown. After receiving the result,"
         "either call another tool or answer normally."
     )
+    delegation: str = (
+        "To delegate a task to a subagent, reply only with "
+        '{"delegate": "<self-contained task and relevant context>"}. '
+        "Delegation is separate from tools. The child shares your project files and "
+        "tools, but not your conversation. It can also delegate tasks. You will "
+        "receive its final answer before continuing. Request either one tool call or "
+        "one delegation per response."
+    )
     summarizer: str = (
         "Summarize the conversation below concisely for a coding agent to continue "
         "working. Preserve the current task, decisions, constraints, relevant file "

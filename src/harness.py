@@ -22,20 +22,6 @@ class AgentHarness:
         self.context_manager = context_manager
         self.history: ChatHistory = []
 
-    def _compact_history(self) -> None:
-        """Replace conversation history with a summary after a successful LLM call."""
-
-        request = [
-            {"role": "system", "content": config.prompts.summarizer},
-            {"role": "user", "content": json.dumps(self.history, ensure_ascii=False)},
-        ]
-        summary = self.llm.chat(request).strip()
-
-        self.history = [
-            {"role": "assistant", "content": f"Conversation summary:\n{summary}"}
-        ]
-        print("Chat history compacted.")
-
     def _handle_command(self, command: str) -> bool:
         """Handle a slash command; return False when the user requests exit.
 
@@ -58,11 +44,50 @@ class AgentHarness:
                 self.history.clear()
                 print("Chat history cleared.")
             case "/compact":
-                self._compact_history()
+                request = [
+                    {"role": "system", "content": config.prompts.summarizer},
+                    {
+                        "role": "user",
+                        "content": json.dumps(self.history, ensure_ascii=False),
+                    },
+                ]
+                summary = self.llm.chat(request).strip()
+                self.history = [
+                    {
+                        "role": "assistant",
+                        "content": f"Conversation summary:\n{summary}",
+                    }
+                ]
+                print("Chat history compacted.")
             case "/exit":
                 return False
             case _:
                 print("Unknown command. Use /help for available commands.")
+
+        return True
+
+    def _handle_delegation(self, response: str) -> bool:
+        """Run a delegation request in a fresh child and record its final answer.
+
+        Args:
+            response: Response of the LLM.
+
+        Returns:
+            `True` if the LLM delegates into a subagent, `False` otherwise.
+        """
+
+        try:
+            call = json.loads(response)
+        except json.JSONDecodeError:
+            return False
+
+        if not isinstance(call, dict) or set(call) != {"delegate"}:
+            return False
+
+        child = AgentHarness(self.llm, self.context_manager)
+        child._process_turn(call["delegate"])
+        result = child.history[-1]["content"]
+        self.history.append({"role": "user", "content": f"Subagent result:\n{result}"})
 
         return True
 
@@ -99,18 +124,16 @@ class AgentHarness:
             query: Query of the user.
         """
 
-        self.history.append(
-            {
-                "role": "user",
-                "content": self.context_manager.get_prefix() + "\n\n" + query,
-            }
-        )
+        prefix = self.context_manager.get_prefix()
+        self.history.append({"role": "user", "content": prefix + "\n\n" + query})
 
         limit = config.tools.max_calls_per_turn
         for _ in range(limit):
             response = self.llm.chat(self.history)
             self.history.append({"role": "assistant", "content": response})
-            if not self._handle_tool_call(response):
+            if not (
+                self._handle_delegation(response) or self._handle_tool_call(response)
+            ):
                 return
 
         self.history.append(

@@ -22,6 +22,7 @@ def test_init() -> None:
     assert harness.llm is llm
     assert harness.context_manager is context_manager
     assert harness.history == []
+    assert not hasattr(harness, "subagent")
 
 
 def test_handle_tool_call() -> None:
@@ -89,56 +90,48 @@ def test_handle_tool_call_without_tool(response: str) -> None:
 
 @pytest.mark.parametrize("arguments", ["[]", '{"path": 1}'])
 def test_handle_tool_call_invalid_arguments(arguments: str) -> None:
-    """Test that argument errors from the actual toolkit become feedback."""
+    """Argument errors from the toolkit propagate to the caller."""
 
     context_manager = ContextManager(ToolKit([ReadFileTool()]))
     harness = AgentHarness(Mock(spec=LLM), context_manager)
     response = '{"tool": "read_file", "arguments": ' + arguments + "}"
 
-    assert harness._handle_tool_call(response) is True
-    assert harness.history[-1]["role"] == "user"
-    assert "Error: TypeError:" in harness.history[-1]["content"]
+    with pytest.raises(TypeError):
+        harness._handle_tool_call(response)
+
+    assert harness.history == []
 
 
-def test_process_turn_recovers_from_tool_error() -> None:
-    """Test that the model receives a tool error and can retry."""
+def test_process_turn_propagates_tool_error() -> None:
+    """Tool errors stop the turn and propagate to the caller."""
 
     context_manager = Mock(spec=ContextManager)
     context_manager.get_prefix.return_value = "Instructions"
     context_manager.tool_kit = Mock(spec=ToolKit)
-    context_manager.tool_kit.execute.side_effect = [
-        FileNotFoundError("missing file"),
-        "file contents",
-    ]
+    context_manager.tool_kit.execute.side_effect = FileNotFoundError("missing file")
     llm = Mock(spec=LLM)
-    llm.chat.side_effect = [
-        '{"tool": "read_file", "arguments": {"path": "missing.txt"}}',
-        '{"tool": "read_file", "arguments": {"path": "README.md"}}',
-        "Finished.",
-    ]
+    response = '{"tool": "read_file", "arguments": {"path": "missing.txt"}}'
+    llm.chat.return_value = response
     harness = AgentHarness(llm, context_manager)
 
-    harness._process_turn("Read a file")
+    with pytest.raises(FileNotFoundError, match="missing file"):
+        harness._process_turn("Read a file")
 
-    assert harness.history[2] == {
-        "role": "user",
-        "content": "Tool result (read_file):\nError: FileNotFoundError: missing file",
-    }
-    assert harness.history[4]["content"] == "Tool result (read_file):\nfile contents"
-    assert harness.history[-1] == {"role": "assistant", "content": "Finished."}
-    assert llm.chat.call_count == 3
+    assert harness.history == [
+        {"role": "user", "content": "Instructions\n\nRead a file"},
+        {"role": "assistant", "content": response},
+    ]
+    assert llm.chat.call_count == 1
 
 
 @pytest.mark.parametrize("limit", [0, 2])
-@pytest.mark.parametrize("error", [None, ValueError("Unknown tool")])
-def test_process_turn_tool_limit(limit: int, error: Exception | None) -> None:
-    """Bound successful and failed calls, resetting the budget each turn."""
+def test_process_turn_tool_limit(limit: int) -> None:
+    """Bound tool calls, resetting the budget each turn."""
 
     context_manager = Mock(spec=ContextManager)
     context_manager.get_prefix.return_value = "Instructions"
     context_manager.tool_kit = Mock(spec=ToolKit)
     context_manager.tool_kit.execute.return_value = "result"
-    context_manager.tool_kit.execute.side_effect = error
     llm = Mock(spec=LLM)
     request = '{"tool": "read_file", "arguments": {"path": "README.md"}}'
     llm.chat.side_effect = [request] * (2 * limit + 1)
@@ -172,10 +165,10 @@ def test_handle_tool_call_can_be_interrupted() -> None:
 
 @pytest.mark.parametrize(
     "queries",
-    [["/exit"], ["q", "/exit"], ["Hello", "Again", "/exit"]],
+    [["/exit"], ["", "/exit"], ["q", "/exit"], ["Hello", "Again", "/exit"]],
 )
 def test_run(queries: list[str], capsys: pytest.CaptureFixture[str]) -> None:
-    """Test exit, ordinary q input, and multiple turns with printed responses."""
+    """Test exit, blank and ordinary input, and multiple printed responses."""
 
     turns = len(queries) - 1
     llm = Mock(spec=LLM)
@@ -208,13 +201,12 @@ def test_run(queries: list[str], capsys: pytest.CaptureFixture[str]) -> None:
             ),
         ),
         ("/unknown", "Unknown command. Use /help for available commands.\n"),
-        ("   ", ""),
     ],
 )
 def test_run_local_commands(
     command: str, expected: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Help, unknown commands, and blank input do not reach the model."""
+    """Local commands do not reach the model."""
 
     llm = Mock(spec=LLM)
     harness = AgentHarness(llm, Mock(spec=ContextManager))
@@ -230,35 +222,54 @@ def test_run_local_commands(
 
 
 def test_compact_history_empty(capsys: pytest.CaptureFixture[str]) -> None:
-    """An empty conversation needs no summary request."""
+    """Compacting an empty conversation still stores the model's summary."""
 
     llm = Mock(spec=LLM)
+    llm.chat.return_value = "Nothing to summarize."
     harness = AgentHarness(llm, Mock(spec=ContextManager))
 
-    harness._compact_history()
+    assert harness._handle_command("/compact") is True
 
-    llm.chat.assert_not_called()
-    assert harness.history == []
-    assert capsys.readouterr().out == "No chat history to compact.\n"
+    request = llm.chat.call_args.args[0]
+    assert json.loads(request[1]["content"]) == []
+    assert harness.history == [
+        {"role": "assistant", "content": "Conversation summary:\nNothing to summarize."}
+    ]
+    assert capsys.readouterr().out == "Chat history compacted.\n"
 
 
-@pytest.mark.parametrize("response", [RuntimeError("Unavailable"), "", "   "])
-def test_compact_history_failure(
-    response: Exception | str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A failed or empty summary leaves the original conversation intact."""
+def test_compact_history_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """Model errors during compaction propagate and preserve the history."""
 
     llm = Mock(spec=LLM)
-    llm.chat.side_effect = [response]
+    llm.chat.side_effect = RuntimeError("Unavailable")
     harness = AgentHarness(llm, Mock(spec=ContextManager))
     original = [{"role": "user", "content": "Fix the tests"}]
     harness.history = original
 
-    harness._compact_history()
+    with pytest.raises(RuntimeError, match="Unavailable"):
+        harness._handle_command("/compact")
 
     assert harness.history is original
-    assert harness.history == [{"role": "user", "content": "Fix the tests"}]
-    assert capsys.readouterr().out.startswith("Could not compact history:")
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("response", ["", "   "])
+def test_compact_history_empty_summary(
+    response: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty model response is stored as an empty summary."""
+
+    llm = Mock(spec=LLM)
+    llm.chat.return_value = response
+    harness = AgentHarness(llm, Mock(spec=ContextManager))
+
+    assert harness._handle_command("/compact") is True
+
+    assert harness.history == [
+        {"role": "assistant", "content": "Conversation summary:\n"}
+    ]
+    assert capsys.readouterr().out == "Chat history compacted.\n"
 
 
 def test_run_compact(capsys: pytest.CaptureFixture[str]) -> None:
@@ -286,7 +297,10 @@ def test_run_compact(capsys: pytest.CaptureFixture[str]) -> None:
             "role": "assistant",
             "content": "Conversation summary:\nTests still need fixing.",
         },
-        {"role": "user", "content": "Instructions\n\nContinue"},
+        {
+            "role": "user",
+            "content": "Instructions\n\nContinue",
+        },
         {"role": "assistant", "content": "Finished."},
     ]
     assert harness.history == expected
@@ -310,7 +324,10 @@ def test_run_reset(populated: bool, capsys: pytest.CaptureFixture[str]) -> None:
         harness.run()
 
     assert harness.history == [
-        {"role": "user", "content": "Instructions\n\nHello"},
+        {
+            "role": "user",
+            "content": "Instructions\n\nHello",
+        },
         {"role": "assistant", "content": "Reply"},
     ]
     llm.chat.assert_called_once_with(harness.history)
