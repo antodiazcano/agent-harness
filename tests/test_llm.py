@@ -25,7 +25,9 @@ def test_chat_normal() -> None:
 
         assert response == "Mock response", "Incorrect response!"
         groq.return_value.chat.completions.create.assert_called_once_with(
-            messages=history, model=config.llm.groq_model
+            messages=history,
+            model=config.llm.groq_model,
+            temperature=config.llm.temperature,
         )
 
 
