@@ -19,6 +19,8 @@ def test_get_system_prompt() -> None:
     expected = f"{config.prompts.agent}\n\n{config.prompts.delegation}"
 
     assert prompt == expected, "Incorrect prompt!"
+    assert "ordinary assistant text" in prompt
+    assert "provider-native" in prompt
 
 
 def test_get_rules() -> None:

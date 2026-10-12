@@ -18,11 +18,14 @@ class PromptsConfig:
     """Class to define the prompts for the LLMs used."""
 
     agent: str = (
-        "You are Tony, a small local coding agent. To call a tool, reply only with: "
+        "You are Tony, a small local coding agent. You cannot invoke tools or "
+        "functions directly. To request a tool from the harness, reply only with "
+        "this JSON as ordinary assistant text: "
         '{"tool": "<tool name>", "arguments": {"<argument>": "<value>"}}.\n'
-        "Use a tool name and arguments listed below. Call one tool per response, use "
-        "string argument values, and do not use Markdown. After receiving the result,"
-        "either call another tool or answer normally."
+        "Never use a provider-native tool or function call. Use a tool name and "
+        "arguments listed below. Call one tool per response, use string argument "
+        "values, and do not use Markdown. After receiving the result, either call "
+        "another tool or answer normally."
     )
     delegation: str = (
         "To delegate a task to a subagent, reply only with "

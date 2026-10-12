@@ -16,7 +16,7 @@ def test_init() -> None:
     """Test that the harness stores its dependencies and starts with no history."""
 
     llm = Mock(spec=LLM)
-    context_manager = Mock(spec=ContextManager)
+    context_manager = Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit))
     harness = AgentHarness(llm, context_manager)
 
     assert harness.llm is llm
@@ -67,6 +67,12 @@ def test_process_turn_executes_tool() -> None:
 
     tool.execute.assert_called_once_with(path="README.md")
     assert llm.chat.call_count == 2
+    for index, call in enumerate(llm.chat.call_args_list):
+        assert call.args[0] == [
+            {"role": "system", "content": context_manager.get_prefix()},
+            *harness.history[: 2 * index + 1],
+        ]
+    assert harness.history[0] == {"role": "user", "content": "Read the README."}
     assert harness.history[1] == {"role": "assistant", "content": tool_call}
     assert harness.history[2] == {
         "role": "user",
@@ -118,7 +124,7 @@ def test_process_turn_propagates_tool_error() -> None:
         harness._process_turn("Read a file")
 
     assert harness.history == [
-        {"role": "user", "content": "Instructions\n\nRead a file"},
+        {"role": "user", "content": "Read a file"},
         {"role": "assistant", "content": response},
     ]
     assert llm.chat.call_count == 1
@@ -173,7 +179,7 @@ def test_run(queries: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     turns = len(queries) - 1
     llm = Mock(spec=LLM)
     llm.chat.side_effect = ["Reply"] * turns
-    context_manager = Mock(spec=ContextManager)
+    context_manager = Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit))
     context_manager.get_prefix.return_value = "Instructions"
     harness = AgentHarness(llm, context_manager)
 
@@ -182,10 +188,13 @@ def test_run(queries: list[str], capsys: pytest.CaptureFixture[str]) -> None:
 
     assert llm.chat.call_count == turns
     assert len(harness.history) == 2 * turns
-    assert [message["content"] for message in harness.history[::2]] == [
-        f"Instructions\n\n{query}" for query in queries[:-1]
-    ]
-    assert capsys.readouterr().out == "Agent: Reply\n" * turns
+    assert [message["content"] for message in harness.history[::2]] == queries[:-1]
+    for index, call in enumerate(llm.chat.call_args_list):
+        assert call.args[0] == [
+            {"role": "system", "content": "Instructions"},
+            *harness.history[: 2 * index + 1],
+        ]
+    assert capsys.readouterr().out == "\nTony > Reply\n" * turns
 
 
 @pytest.mark.parametrize(
@@ -194,13 +203,14 @@ def test_run(queries: list[str], capsys: pytest.CaptureFixture[str]) -> None:
         (
             "/help",
             (
-                "/help   Show this help message.\n"
-                "/compact Summarize the chat history.\n"
-                "/reset  Clear the chat history.\n"
-                "/exit   Exit the agent.\n"
+                "Commands\n"
+                "  /help      Show this help message.\n"
+                "  /compact   Summarize the chat history.\n"
+                "  /reset     Clear the chat history.\n"
+                "  /exit      Exit the agent.\n"
             ),
         ),
-        ("/unknown", "Unknown command. Use /help for available commands.\n"),
+        ("/unknown", "! Unknown command. Use /help for available commands.\n"),
     ],
 )
 def test_run_local_commands(
@@ -209,7 +219,7 @@ def test_run_local_commands(
     """Local commands do not reach the model."""
 
     llm = Mock(spec=LLM)
-    harness = AgentHarness(llm, Mock(spec=ContextManager))
+    harness = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
     harness.history = [{"role": "user", "content": "Previous message"}]
     previous_history = harness.history.copy()
 
@@ -226,7 +236,7 @@ def test_compact_history_empty(capsys: pytest.CaptureFixture[str]) -> None:
 
     llm = Mock(spec=LLM)
     llm.chat.return_value = "Nothing to summarize."
-    harness = AgentHarness(llm, Mock(spec=ContextManager))
+    harness = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
 
     assert harness._handle_command("/compact") is True
 
@@ -235,7 +245,7 @@ def test_compact_history_empty(capsys: pytest.CaptureFixture[str]) -> None:
     assert harness.history == [
         {"role": "assistant", "content": "Conversation summary:\nNothing to summarize."}
     ]
-    assert capsys.readouterr().out == "Chat history compacted.\n"
+    assert capsys.readouterr().out == "✓ Chat history compacted.\n"
 
 
 def test_compact_history_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -243,7 +253,7 @@ def test_compact_history_error(capsys: pytest.CaptureFixture[str]) -> None:
 
     llm = Mock(spec=LLM)
     llm.chat.side_effect = RuntimeError("Unavailable")
-    harness = AgentHarness(llm, Mock(spec=ContextManager))
+    harness = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
     original = [{"role": "user", "content": "Fix the tests"}]
     harness.history = original
 
@@ -262,14 +272,14 @@ def test_compact_history_empty_summary(
 
     llm = Mock(spec=LLM)
     llm.chat.return_value = response
-    harness = AgentHarness(llm, Mock(spec=ContextManager))
+    harness = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
 
     assert harness._handle_command("/compact") is True
 
     assert harness.history == [
         {"role": "assistant", "content": "Conversation summary:\n"}
     ]
-    assert capsys.readouterr().out == "Chat history compacted.\n"
+    assert capsys.readouterr().out == "✓ Chat history compacted.\n"
 
 
 def test_run_compact(capsys: pytest.CaptureFixture[str]) -> None:
@@ -277,7 +287,7 @@ def test_run_compact(capsys: pytest.CaptureFixture[str]) -> None:
 
     llm = Mock(spec=LLM)
     llm.chat.side_effect = ["Tests still need fixing.", "Finished."]
-    context_manager = Mock(spec=ContextManager)
+    context_manager = Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit))
     context_manager.get_prefix.return_value = "Instructions"
     harness = AgentHarness(llm, context_manager)
     original = [
@@ -299,13 +309,17 @@ def test_run_compact(capsys: pytest.CaptureFixture[str]) -> None:
         },
         {
             "role": "user",
-            "content": "Instructions\n\nContinue",
+            "content": "Continue",
         },
         {"role": "assistant", "content": "Finished."},
     ]
     assert harness.history == expected
     assert llm.chat.call_count == 2
-    assert capsys.readouterr().out == "Chat history compacted.\nAgent: Finished.\n"
+    assert llm.chat.call_args.args[0] == [
+        {"role": "system", "content": "Instructions"},
+        *expected[:-1],
+    ]
+    assert capsys.readouterr().out == "✓ Chat history compacted.\n\nTony > Finished.\n"
 
 
 @pytest.mark.parametrize("populated", [False, True])
@@ -314,7 +328,7 @@ def test_run_reset(populated: bool, capsys: pytest.CaptureFixture[str]) -> None:
 
     llm = Mock(spec=LLM)
     llm.chat.side_effect = ["Reply"]
-    context_manager = Mock(spec=ContextManager)
+    context_manager = Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit))
     context_manager.get_prefix.return_value = "Instructions"
     harness = AgentHarness(llm, context_manager)
     if populated:
@@ -326,12 +340,31 @@ def test_run_reset(populated: bool, capsys: pytest.CaptureFixture[str]) -> None:
     assert harness.history == [
         {
             "role": "user",
-            "content": "Instructions\n\nHello",
+            "content": "Hello",
         },
         {"role": "assistant", "content": "Reply"},
     ]
-    llm.chat.assert_called_once_with(harness.history)
-    assert capsys.readouterr().out == "Chat history cleared.\nAgent: Reply\n"
+    llm.chat.assert_called_once_with(
+        [
+            {"role": "system", "content": "Instructions"},
+            {"role": "user", "content": "Hello"},
+        ]
+    )
+    assert capsys.readouterr().out == "✓ Chat history cleared.\n\nTony > Reply\n"
+
+
+@pytest.mark.parametrize(
+    ("is_terminal", "expected"),
+    [
+        (False, "Tony >"),
+        (True, "\033[1;32mTony >\033[0m"),
+    ],
+)
+def test_style(is_terminal: bool, expected: str) -> None:
+    """Use ANSI styling only for an interactive terminal."""
+
+    with patch("src.harness.sys.stdout.isatty", return_value=is_terminal):
+        assert AgentHarness._style("Tony >", "1;32") == expected
 
 
 @pytest.mark.parametrize(
@@ -342,7 +375,7 @@ def test_handle_command(command: str, keep_running: bool) -> None:
     """Only exit stops the loop, and only reset clears history."""
 
     llm = Mock(spec=LLM)
-    harness = AgentHarness(llm, Mock(spec=ContextManager))
+    harness = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
     previous_history = [{"role": "user", "content": "Previous message"}]
     harness.history = previous_history.copy()
 

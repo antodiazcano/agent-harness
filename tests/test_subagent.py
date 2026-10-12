@@ -30,8 +30,9 @@ def test_delegate_uses_fresh_history() -> None:
     second = llm.chat.call_args_list[1].args[0]
     assert first is not second
     assert len(first) == len(second) == 2
-    assert first[0]["content"].endswith("\n\nFirst task")
-    assert second[0]["content"].endswith("\n\nSecond task")
+    assert first[0] == second[0] == {"role": "system", "content": context.get_prefix()}
+    assert first[1] == {"role": "user", "content": "First task"}
+    assert second[1] == {"role": "user", "content": "Second task"}
     assert "This is a dummy file." in first[0]["content"]
     assert "dummy 1" in first[0]["content"]
     assert "Name: delegate" not in first[0]["content"]
@@ -65,10 +66,14 @@ def test_parent_receives_child_result() -> None:
     assert child_history is not parent.history
     assert "Review this project" not in child_history[0]["content"]
     assert "Name: delegate" not in child_history[0]["content"]
-    assert parent.history[0]["content"].count(config.prompts.delegation) == 1
+    assert parent.history[0] == {"role": "user", "content": "Review this project"}
+    assert llm.chat.call_args_list[0].args[0][0] == child_history[0]
     assert child_history[0]["content"].count(config.prompts.delegation) == 1
     assert [tool.name for tool in context.tool_kit.tools] == ["read_file"]
-    assert child_history[2]["content"].startswith("Tool result (read_file):\n")
+    assert child_history[1] == {"role": "user", "content": "Read the rules"}
+    child_followup = llm.chat.call_args_list[2].args[0]
+    assert child_followup[0] == child_history[0]
+    assert child_followup[3]["content"].startswith("Tool result (read_file):\n")
 
 
 def test_delegate_can_delegate_again() -> None:
@@ -93,9 +98,18 @@ def test_delegate_can_delegate_again() -> None:
     assert child_history is not parent.history
     assert nested_history is not child_history
     assert nested_history is not parent.history
-    assert child_history[0]["content"] == context.get_prefix() + "\n\nChild task"
-    assert nested_history[0]["content"] == context.get_prefix() + "\n\nNested task"
-    assert child_history[2]["content"] == "Subagent result:\nNested result"
+    assert (
+        child_history[0]
+        == nested_history[0]
+        == {
+            "role": "system",
+            "content": context.get_prefix(),
+        }
+    )
+    assert child_history[1] == {"role": "user", "content": "Child task"}
+    assert nested_history[1] == {"role": "user", "content": "Nested task"}
+    child_followup = llm.chat.call_args_list[3].args[0]
+    assert child_followup[3]["content"] == "Subagent result:\nNested result"
     assert parent.history[2]["content"] == "Subagent result:\nChild result"
     assert parent.history[-1]["content"] == "Parent finished"
 
@@ -123,8 +137,10 @@ def test_delegate_keeps_shell_permissions_and_limit() -> None:
         "Subagent result:\nStopped: tool-call limit reached (1)."
     )
     assert llm.chat.call_count == 1
-    child_history = llm.chat.call_args.args[0]
-    assert "permission denied" in child_history[2]["content"]
+    assert llm.chat.call_args.args[0] == [
+        {"role": "system", "content": context.get_prefix()},
+        {"role": "user", "content": "Run echo hello"},
+    ]
 
 
 def test_delegation_counts_toward_parent_limit() -> None:
@@ -157,7 +173,7 @@ def test_handle_delegation_without_request(response: str) -> None:
     """Ordinary responses and tool calls do not start a child."""
 
     llm = Mock(spec=LLM)
-    parent = AgentHarness(llm, Mock(spec=ContextManager))
+    parent = AgentHarness(llm, Mock(spec=ContextManager, tool_kit=Mock(spec=ToolKit)))
 
     assert parent._handle_delegation(response) is False
     llm.chat.assert_not_called()
