@@ -8,6 +8,10 @@ the conversation. Ordinary text responses and plain JSON requests are also suppo
 The project is intentionally minimal. It is a useful base for learning how an
 agent loop works without hiding the important parts behind a large framework.
 
+![Conventional LLM, reasoning LLM, and LLM in an agent harness](images/harnes_eng.png)
+
+Illustration credit: Sebastián Raschka.
+
 ## Features
 
 - A simple model → action → result loop
@@ -24,6 +28,8 @@ agent loop works without hiding the important parts behind a large framework.
 ## How it works
 
 ### Flow overview
+
+![Agent harness architecture with numbered tool and subagent paths](images/schema.png)
 
 ```mermaid
 flowchart LR
@@ -86,6 +92,12 @@ arrows indicate responses. A direct answer skips both optional branches.
 Conversation history stores only conversation messages. Each agent model request
 prepends the prompt prefix once as a system message, without storing it in
 history. After `/compact` or `/reset`, the next turn still receives the prefix.
+
+![Conversation history across turns, tool use, and compaction](images/history.png)
+
+This is a conceptual view: `AgentHarness` assembles the model requests and records
+results, while `ContextManager` builds the system prefix. Compaction happens only
+when the user runs `/compact`.
 
 The Groq adapter registers native functions for the three tools and delegation,
 then converts native calls into the JSON formats below. The harness also accepts
