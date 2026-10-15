@@ -104,7 +104,7 @@ class AgentHarness:
         if not isinstance(call, dict) or set(call) != {"delegate"}:
             return False
 
-        print(self._style("◇ Running subagent…", "33"))
+        print(self._style("◇ Running subagent...", "33"))
 
         child = AgentHarness(self.llm, self.context_manager)
         child._process_turn(call["delegate"])

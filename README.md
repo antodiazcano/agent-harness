@@ -8,7 +8,7 @@ the conversation. Ordinary text responses and plain JSON requests are also suppo
 The project is intentionally minimal. It is a useful base for learning how an
 agent loop works without hiding the important parts behind a large framework.
 
-![Conventional LLM, reasoning LLM, and LLM in an agent harness](images/harnes_eng.png)
+![Conventional LLM, reasoning LLM, and LLM in an agent harness](images/harness_eng.png)
 
 Illustration credit: Sebastián Raschka.
 
